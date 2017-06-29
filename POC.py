@@ -4,7 +4,7 @@
 Alyssa Harris
 
 Proof of concept code to manage many fortran runs from python
-Starting with 10, and will eventually move up to 40
+Currently runs 40 executables
 
 """
 
