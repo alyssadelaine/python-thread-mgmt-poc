@@ -94,7 +94,6 @@ def manager():
 				t.start()
 
 		queue_threads = []
-		# print("Main thread about to wait")
 		while len(plans_complete) < 10:
 			completed_event.wait()
 			plan = plan_queue.get()
@@ -112,21 +111,8 @@ def manager():
 	except NameError as e:
 		print(str(sys.exc_info()[0]) + ': ' + str(e))
 	except:
-		# just put this here so the terminal doesn't freeze
+		# just put this here so the terminal doesn't freeze on error when testing
 		pass
-	# print("*********")
-
-	# print("MAIN THREAD IS BACK")
-
-	# """
-	"""
-	# This is functionally the same as above
-
-	while sum(my_list) != 0:
-		# print("******** ")
-		# print("My list is: \n {}".format(my_list))
-		time.sleep(0)
-	# """
 	end = time.time()
 	print("All results: {}".format(all_results))
 	print("Done, and elapsed time is {} and my_list is: \n {}".format(end-start, my_list))
