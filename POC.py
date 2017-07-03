@@ -18,9 +18,20 @@ import csv
 import threading
 import time
 from queue import Queue
+from helperfuncs import get_results
+from executable_prep import create_output_filename
 
 # Executable prep done in a separate file
 from executable_prep import prep_for_run
+
+import logging
+
+LOG_FILENAME = 'calc_log.out'
+logging.basicConfig(
+    filename=LOG_FILENAME,
+    level=logging.DEBUG,
+	filemode = 'w'
+)
 
 tot_plan = 10
 num_slices = 4
@@ -29,7 +40,12 @@ exes_complete = [[-1]*num_slices]*tot_plan
 completed_event = threading.Event()
 plan_queue = Queue()
 plans_complete = []
+plans_queued = []
 all_results = {}
+
+# hold the output files, which I'll build in another file
+
+output_files = [None]*tot_plan*num_slices
 
 event_lock = threading.Lock()
 
@@ -40,6 +56,7 @@ def call_exe(plan_num, slice_ptr):
 	exe_num = (plan_num + 1) * num_slices - (slice_ptr + 1)
 	src_path, exe, cmdList = prep_for_run(exe_num)
 	exe_path = cmdList[0]
+	output_files[exe_num] = cmdList[3]
 	# call the executable
 	try:
 		my_list[exe_num] = subprocess.call(cmdList, stdout=subprocess.PIPE) # subprocess.check_output(cmdList)]
@@ -47,8 +64,9 @@ def call_exe(plan_num, slice_ptr):
 		if sum(exes_complete[plan_num])==0 and plan_num not in plans_complete:
 			with event_lock:
 				if sum(exes_complete[plan_num])==0 and plan_num not in plans_complete:
-					plans_complete.append(plan_num)
+					logging.debug("Putting {} in the queue".format(plan_num))
 					plan_queue.put(plan_num)
+					plans_complete.append(plan_num)
 					completed_event.set()
 
 	except OSError as e:
@@ -67,13 +85,16 @@ def call_exe(plan_num, slice_ptr):
 def sum_groups(plan):
 	global all_results
 	json_list = []
+	logging.debug("All results before {}: \n {}".format(plan, all_results))
 	# filler code to show we can do something to a group of related
 	# 	json objects (or dictionaries)
 	for slice_index in range(0, num_slices):
-		json_list = [{'variable':1},{'variable':1},{'variable':1}]
+		# json_list = [{'variable':1},{'variable':1},{'variable':1}]
+		json_list.append(get_results(output_files[(plan + 1) * num_slices - (slice_index + 1)]))
 	for k, v in json_list[0].items():
 		all_results[k + str(plan)] = v + json_list[1][k] + json_list[2][k]
-	return all_results
+	logging.debug(("All results after {}: \n {}".format(plan, all_results)))
+	# return all_results
 
 def manager():
 	global plans_complete
@@ -91,20 +112,31 @@ def manager():
 				t.start()
 
 		queue_threads = []
+
 		while len(plans_complete) < 10:
+			# if len(plans_queued) < 10:
 			completed_event.wait()
 			plan = plan_queue.get()
+			logging.debug(str(plans_complete))
 			t = threading.Thread(target = sum_groups, name = str(plan), args = (plan,))
 			queue_threads.append(t)
 			t.start()
 			with event_lock:
 				if plan_queue.empty():
 					completed_event.clear()
-
-		for t_ptr in queue_threads:
-			t_ptr.join()
 		for t_ptr in thread_list:
 			t_ptr.join()
+		# At this point, we have all the plans in the queue, so now process the results for all of them.
+		while not plan_queue.empty():
+			plan = plan_queue.get()
+			logging.debug(str(plans_complete))
+			t = threading.Thread(target = sum_groups, name = str(plan), args = (plan,))
+			queue_threads.append(t)
+			t.start()
+		logging.debug("Queue_threads is {}".format(queue_threads))
+		for t2_ptr in queue_threads:
+			t2_ptr.join()
+		logging.debug("Queue_threads is now {}".format(queue_threads))
 	except NameError as e:
 		print(str(sys.exc_info()[0]) + ': ' + str(e))
 	except:
@@ -113,5 +145,10 @@ def manager():
 	end = time.time()
 	print("All results: {}".format(all_results))
 	print("Done, and elapsed time is {} and my_list is: \n {}".format(end-start, my_list))
+	try:
+		for i in range(0, tot_plan):
+			print("Deficitp{} is {}".format(i, all_results["deficitp" + str(i)]))
+	except KeyError:
+		print("Errored on {}".format(i))
 
 manager()
