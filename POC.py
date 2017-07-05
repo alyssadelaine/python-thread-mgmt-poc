@@ -18,7 +18,7 @@ import csv
 import threading
 import time
 from queue import Queue
-from helperfuncs import get_results
+from helperfuncs import get_results, validate_results
 from executable_prep import create_output_filename
 
 # Executable prep done in a separate file
@@ -26,7 +26,7 @@ from executable_prep import prep_for_run
 
 import logging
 
-LOG_FILENAME = 'calc_log.out'
+LOG_FILENAME = 'manager_log.out'
 logging.basicConfig(
     filename=LOG_FILENAME,
     level=logging.DEBUG,
@@ -35,11 +35,10 @@ logging.basicConfig(
 
 tot_plan = 10
 num_slices = 4
-my_list = [-1] * tot_plan * num_slices
 
-first_lock = threading.Event()
-
-exes_complete = [[-1]*num_slices]*tot_plan
+exes_complete = []
+for i in range(0, tot_plan):
+	exes_complete.append([-1]*num_slices)
 completed_event = threading.Event()
 plan_queue = Queue()
 plans_complete = []
@@ -53,7 +52,7 @@ output_files = [None]*tot_plan*num_slices
 event_lock = threading.Lock()
 
 def call_exe(plan_num, slice_ptr):
-	global my_list, event_lock
+	global event_lock
 	global exes_complete, plans_complete
 	global completed_event
 	exe_num = (plan_num + 1) * num_slices - (slice_ptr + 1)
@@ -61,8 +60,8 @@ def call_exe(plan_num, slice_ptr):
 	output_files[exe_num] = output_file
 	# call the executable
 	try:
-		my_list[exe_num] = subprocess.call(cmdList, stdout=subprocess.PIPE) # subprocess.check_output(cmdList)]
-		exes_complete[plan_num][slice_ptr] = my_list[exe_num] # threads are exiting here and then re-calling the main thread
+		exes_complete[plan_num][slice_ptr] = subprocess.call(cmdList, stdout=subprocess.PIPE)
+		logging.debug("Completed {} of {}".format(slice_ptr, plan_num))
 		if sum(exes_complete[plan_num])==0 and plan_num not in plans_complete:
 			with event_lock:
 				if sum(exes_complete[plan_num])==0 and plan_num not in plans_complete:
@@ -87,9 +86,6 @@ def call_exe(plan_num, slice_ptr):
 def sum_groups(plan):
 	global all_results
 	json_list = []
-	logging.debug("All results before {}: \n {}".format(plan, all_results))
-	# filler code to show we can do something to a group of related
-	# 	json objects (or dictionaries)
 	for slice_index in range(0, num_slices):
 		# json_list = [{'variable':1},{'variable':1},{'variable':1}]
 		json_list.append(get_results(output_files[(plan + 1) * num_slices - (slice_index + 1)]))
@@ -115,7 +111,7 @@ def manager():
 
 		queue_threads = []
 
-		while len(plans_complete) < 10:
+		while len(plans_complete) < tot_plan:
 			# if len(plans_queued) < 10:
 			completed_event.wait()
 			plan = plan_queue.get()
@@ -135,10 +131,8 @@ def manager():
 			t = threading.Thread(target = sum_groups, name = str(plan), args = (plan,))
 			queue_threads.append(t)
 			t.start()
-		logging.debug("Queue_threads is {}".format(queue_threads))
 		for t2_ptr in queue_threads:
 			t2_ptr.join()
-		logging.debug("Queue_threads is now {}".format(queue_threads))
 	except NameError as e:
 		print(str(sys.exc_info()[0]) + ': ' + str(e))
 	except:
@@ -146,11 +140,6 @@ def manager():
 		pass
 	end = time.time()
 	print("All results: {}".format(all_results))
-	print("Done, and elapsed time is {} and my_list is: \n {}".format(end-start, my_list))
-	try:
-		for i in range(0, tot_plan):
-			print("Deficitp{} is {}".format(i, all_results["deficitp" + str(i)]))
-	except KeyError:
-		print("Errored on {}".format(i))
+	validate_results(tot_plan, all_results)
 
 manager()
