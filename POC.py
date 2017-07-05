@@ -7,22 +7,21 @@ Proof of concept code to manage many fortran runs from python
 Currently runs 40 executables
 
 The four executables in a group are assumed to be related, and so they're referred to as part of one "plan"
-Thus, part of this POC is to analyze each group of results while letting each executable run separately
+So part of this POC is to analyze each group of results while letting each executable run separately
 
 """
 
 import os
 import sys
 import subprocess
-import csv
 import threading
 import time
+# Following requires python 3.x
 from queue import Queue
-from helperfuncs import get_results, validate_results
-from executable_prep import create_output_filename
 
-# Executable prep done in a separate file
+# Executable prep and dealing with results done in a separate file
 from executable_prep import prep_for_run
+from helperfuncs import get_results, validate_results
 
 import logging
 
@@ -36,9 +35,13 @@ logging.basicConfig(
 tot_plan = 10
 num_slices = 4
 exes_complete = []
+
+# hold the output files, which I'll build in another file
+
+output_files = [None]*tot_plan*num_slices
 for i in range(0, tot_plan):
 	exes_complete.append([-1]*num_slices)
-completed_event = threading.Event()
+
 plan_queue = Queue()
 plans_complete = []
 plans_queued = []
@@ -48,8 +51,10 @@ output_files = [None]*tot_plan*num_slices
 # hold the output files, which I'll build in another file
 
 output_files = [None]*tot_plan*num_slices
-
+# use a lock to avoid race conditions relative to plans_complete
 event_lock = threading.Lock()
+# use an event flag to indicate that a plan has just completed
+completed_event = threading.Event()
 
 def call_exe(plan_num, slice_ptr):
 	global event_lock
@@ -74,7 +79,7 @@ def call_exe(plan_num, slice_ptr):
 	except OSError as e:
 		errno, strerror = e.args
 		print("OS error({0}): {1}".format(errno,strerror))
-		print("When trying to access: {}".format(cmdList))
+		print("When trying to execute: {}".format(cmdList))
 	except TypeError as e:
 		print(str(sys.exc_info()[0]) + ': ' + str(e))
 	except IndexError as e:
@@ -92,54 +97,47 @@ def sum_groups(plan):
 	for k, v in json_list[0].items():
 		all_results[k + str(plan)] = v + json_list[1][k] + json_list[2][k]
 	logging.debug(("All results after {}: \n {}".format(plan, all_results)))
-	# return all_results
 
 def manager():
-	global plans_complete
 	global completed_event
-	global exes_complete
 
-	try:
-		start = time.time()
-		thread_list = []
+	start = time.time()
+	thread_list = []
 
-		for plan in range(0,tot_plan):
-			for slice_index in range(0, num_slices):
-				t = threading.Thread(target = call_exe, name = str(plan), args = (plan,slice_index,))
-				thread_list.append(t)
-				t.start()
-
-		queue_threads = []
-
-		while len(plans_complete) < tot_plan:
-			# if len(plans_queued) < 10:
-			completed_event.wait()
-			plan = plan_queue.get()
-			logging.debug(str(plans_complete))
-			t = threading.Thread(target = sum_groups, name = str(plan), args = (plan,))
-			queue_threads.append(t)
+	for plan in range(0,tot_plan):
+		for slice_index in range(0, num_slices):
+			t = threading.Thread(target = call_exe, name = str(plan), args = (plan,slice_index,))
+			thread_list.append(t)
 			t.start()
-			with event_lock:
-				if plan_queue.empty():
-					completed_event.clear()
-		for t_ptr in thread_list:
-			t_ptr.join()
-		# At this point, we have all the plans in the queue, so now process the results for all of them.
-		while not plan_queue.empty():
-			plan = plan_queue.get()
-			logging.debug(str(plans_complete))
-			t = threading.Thread(target = sum_groups, name = str(plan), args = (plan,))
-			queue_threads.append(t)
-			t.start()
-		for t2_ptr in queue_threads:
-			t2_ptr.join()
-	except NameError as e:
-		print(str(sys.exc_info()[0]) + ': ' + str(e))
-	except:
-		# just put this here so the terminal doesn't freeze on error when testing
-		pass
+
+	queue_threads = []
+
+	while len(plans_complete) < tot_plan:
+		completed_event.wait()
+		plan = plan_queue.get()
+		logging.debug(str(plans_complete))
+		t = threading.Thread(target = sum_groups, name = str(plan), args = (plan,))
+		queue_threads.append(t)
+		t.start()
+		with event_lock:
+			if plan_queue.empty():
+				completed_event.clear()
+
+	# At this point, we have all the plans in the queue, so now process the results for all of them.
+	while not plan_queue.empty():
+		plan = plan_queue.get()
+		logging.debug(str(plans_complete))
+		t = threading.Thread(target = sum_groups, name = str(plan), args = (plan,))
+		queue_threads.append(t)
+		t.start()
+	for t_ptr in queue_threads:
+		t_ptr.join()
+
 	end = time.time()
-	print("All results: {}".format(all_results))
+
+	print("Time elapsed: {}".format(end - start))
+
+	# Make sure these are the results we need
 	validate_results(tot_plan, all_results)
 
 manager()
