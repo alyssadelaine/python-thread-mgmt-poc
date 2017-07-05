@@ -40,6 +40,7 @@ exes_complete = []
 # hold the output files, which I'll build in another file
 
 output_files = [None]*tot_plan*num_slices
+
 for i in range(0, tot_plan):
 	exes_complete.append([-1]*num_slices)
 
@@ -47,7 +48,6 @@ plan_queue = Queue()
 plans_complete = []
 plans_queued = []
 all_results = {}
-output_files = [None]*tot_plan*num_slices
 
 # hold the output files, which I'll build in another file
 
