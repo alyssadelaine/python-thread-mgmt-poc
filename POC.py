@@ -50,7 +50,6 @@ plans_queued = []
 all_results = {}
 
 # hold the output files, which I'll build in another file
-
 output_files = [None]*tot_plan*num_slices
 # use a lock to avoid race conditions relative to plans_complete
 event_lock = threading.Lock()
