@@ -44,6 +44,7 @@ plan_queue = Queue()
 plans_complete = []
 plans_queued = []
 all_results = {}
+output_files = [None]*tot_plan*num_slices
 
 # hold the output files, which I'll build in another file
 
@@ -87,7 +88,6 @@ def sum_groups(plan):
 	global all_results
 	json_list = []
 	for slice_index in range(0, num_slices):
-		# json_list = [{'variable':1},{'variable':1},{'variable':1}]
 		json_list.append(get_results(output_files[(plan + 1) * num_slices - (slice_index + 1)]))
 	for k, v in json_list[0].items():
 		all_results[k + str(plan)] = v + json_list[1][k] + json_list[2][k]
