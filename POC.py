@@ -26,9 +26,8 @@ first_lock = threading.Event()
 def call_exe(plan_num):
 	global my_list, first_lock
 
-	src_path, exe, cmdList = prep_for_run(plan_num)
+	cmdList = prep_for_run(plan_num)
 	print(str(cmdList))
-	exe_path = cmdList[0]
 	# call the executable
 	try:
 		print(str(cmdList))
